@@ -8,7 +8,6 @@ import select
 import time
 import zlib
 import threading
-import logging
 import functools
 
 from .errors import *
@@ -23,32 +22,6 @@ IP_HEADER_FORMAT = "!BBHHHBBHII"
 ICMP_HEADER_FORMAT = "!BBHHH"  # According to netinet/ip_icmp.h. !=network byte order(big-endian), B=unsigned char, H=unsigned short
 ICMP_TIME_FORMAT = "!d"  # d=double
 SOCKET_SO_BINDTODEVICE = 25  # socket.SO_BINDTODEVICE
-
-
-def _debug(*args, **kwargs):
-    """Print debug info to stdout if `ping3.DEBUG` is True.
-
-    Args:
-        *args: Any. Usually are strings or objects that can be converted to str.
-    """
-    def get_logger():
-        logger = logging.getLogger(__name__)
-        logger.setLevel(logging.DEBUG)
-        formatter = logging.Formatter('[%(levelname)s] %(message)s')
-        cout_handler = logging.StreamHandler()
-        cout_handler.setLevel(logging.DEBUG)
-        cout_handler.setFormatter(formatter)
-        logger.addHandler(cout_handler)
-        logger.debug("Ping3 Version: {}".format(__version__))
-        logger.debug("LOGGER: {}".format(logger))
-        return logger
-
-    if not DEBUG:
-        return None
-    global LOGGER
-    LOGGER = LOGGER or get_logger()
-    message = " ".join(str(item) for item in args)
-    LOGGER.debug(message)
 
 
 def _raise(err):
@@ -78,9 +51,7 @@ def _func_logger(func: callable) -> callable:
         pargs = ", ".join("'{}'".format(arg) if isinstance(arg, str) else arg for arg in args)
         kargs = str(kwargs) if kwargs else ""
         all_args = ", ".join((pargs, kargs)) if (pargs and kargs) else (pargs or kargs)
-        _debug("Function Called:", "{func.__name__}({})".format(all_args, func=func))
         func_return = func(*args, **kwargs)
-        _debug("Function Returned:", "{func.__name__} -> {rtrn}".format(func=func, rtrn=func_return))
         return func_return
 
     return wrapper
@@ -172,12 +143,10 @@ def send_one_ping(sock: socket, dest_addr: str, icmp_id: int, seq: int, size: in
     Raises:
         HostUnkown: If destination address is a domain name and cannot resolved.
     """
-    _debug("Destination Address: '{}'".format(dest_addr))
     try:
         dest_addr = socket.gethostbyname(dest_addr)  # Domain name will translated into IP address, and IP address leaves unchanged.
     except socket.gaierror as err:
         raise HostUnknown(dest_addr) from err
-    _debug("Destination Address:", dest_addr)
     pseudo_checksum = 0  # Pseudo checksum is used to calculate the real checksum.
     icmp_header = struct.pack(ICMP_HEADER_FORMAT, IcmpType.ECHO_REQUEST, ICMP_DEFAULT_CODE, pseudo_checksum, icmp_id, seq)
     padding = (size - struct.calcsize(ICMP_TIME_FORMAT)) * "Q"  # Using double to store current time.
@@ -185,8 +154,6 @@ def send_one_ping(sock: socket, dest_addr: str, icmp_id: int, seq: int, size: in
     real_checksum = checksum(icmp_header + icmp_payload)  # Calculates the checksum on the dummy header and the icmp_payload.
     # Don't know why I need socket.htons() on real_checksum since ICMP_HEADER_FORMAT already in Network Bytes Order (big-endian)
     icmp_header = struct.pack(ICMP_HEADER_FORMAT, IcmpType.ECHO_REQUEST, ICMP_DEFAULT_CODE, socket.htons(real_checksum), icmp_id, seq)  # Put real checksum into ICMP header.
-    _debug("Sent ICMP Header:", read_icmp_header(icmp_header))
-    _debug("Sent ICMP Payload:", icmp_payload)
     packet = icmp_header + icmp_payload
     sock.sendto(packet, (dest_addr, 0))  # addr = (ip, port). Port is 0 respectively the OS default behavior will be used.
 
@@ -218,11 +185,9 @@ def receive_one_ping(sock: socket, icmp_id: int, seq: int, timeout: int) -> floa
     ip_header_slice = slice(0, struct.calcsize(IP_HEADER_FORMAT))  # [0:20]
     icmp_header_slice = slice(ip_header_slice.stop, ip_header_slice.stop + struct.calcsize(ICMP_HEADER_FORMAT))  # [20:28]
     timeout_time = time.time() + timeout  # Exactly time when timeout.
-    _debug("Timeout time:", time.ctime(timeout_time))
     while True:
         timeout_left = timeout_time - time.time()  # How many seconds left until timeout.
         timeout_left = timeout_left if timeout_left > 0 else 0  # Timeout must be non-negative
-        _debug("Timeout left: {:.2f}s".format(timeout_left))
         selected = select.select([sock, ], [], [], timeout_left)  # Wait until sock is ready to read or time is out.
         if selected[0] == []:  # Timeout
             raise Timeout(timeout)
@@ -230,12 +195,8 @@ def receive_one_ping(sock: socket, icmp_id: int, seq: int, timeout: int) -> floa
         recv_data, addr = sock.recvfrom(1024)
         ip_header_raw, icmp_header_raw, icmp_payload_raw = recv_data[ip_header_slice], recv_data[icmp_header_slice], recv_data[icmp_header_slice.stop:]
         ip_header = read_ip_header(ip_header_raw)
-        _debug("Received IP Header:", ip_header)
         icmp_header = read_icmp_header(icmp_header_raw)
-        _debug("Received ICMP Header:", icmp_header)
-        _debug("Received ICMP Payload:", icmp_payload_raw)
         if icmp_header['id'] and icmp_header['id'] != icmp_id:  # ECHO_REPLY should match the ID field.
-            _debug("ICMP ID dismatch. Packet filtered out.")
             continue
         if icmp_header['type'] == IcmpType.TIME_EXCEEDED:  # TIME_EXCEEDED has no icmp_id and icmp_seq. Usually they are 0.
             if icmp_header['code'] == IcmpTimeExceededCode.TTL_EXPIRED:
@@ -247,12 +208,10 @@ def receive_one_ping(sock: socket, icmp_id: int, seq: int, timeout: int) -> floa
             raise DestinationUnreachable()
         if icmp_header['id'] and icmp_header['seq'] == seq:  # ECHO_REPLY should match the SEQ field.
             if icmp_header['type'] == IcmpType.ECHO_REQUEST:  # filters out the ECHO_REQUEST itself.
-                _debug("ECHO_REQUEST received. Packet filtered out.")
                 continue
             if icmp_header['type'] == IcmpType.ECHO_REPLY:
                 time_sent = struct.unpack(ICMP_TIME_FORMAT, icmp_payload_raw[0:struct.calcsize(ICMP_TIME_FORMAT)])[0]
                 return time_recv - time_sent
-        _debug("Uncatched ICMP Packet:", icmp_header)
 
 
 @_func_logger
@@ -286,18 +245,16 @@ def ping(dest_addr: str, timeout: int = 4, unit: str = "s", src_addr: str = None
                 if sock.getsockopt(socket.IPPROTO_IP, socket.IP_TTL):
                     sock.setsockopt(socket.IPPROTO_IP, socket.IP_TTL, ttl)
             except OSError as err:
-                _debug("Set Socket Option `IP_TTL` in `IPPROTO_IP` Failed: {}".format(err))
+                pass
             try:
                 if sock.getsockopt(socket.SOL_IP, socket.IP_TTL):
                     sock.setsockopt(socket.SOL_IP, socket.IP_TTL, ttl)
             except OSError as err:
-                _debug("Set Socket Option `IP_TTL` in `SOL_IP` Failed: {}".format(err))
+                pass
         if interface:
             sock.setsockopt(socket.SOL_SOCKET, SOCKET_SO_BINDTODEVICE, interface.encode())  # packets will be sent from specified interface.
-            _debug("Socket Interface Binded:", interface)
         if src_addr:
             sock.bind((src_addr, 0))  # only packets send to src_addr are received.
-            _debug("Socket Source Address Binded:", src_addr)
         thread_id = threading.get_native_id() if hasattr(threading, 'get_native_id') else threading.currentThread().ident  # threading.get_native_id() is supported >= python3.8.
         process_id = os.getpid()  # If ping() run under different process, thread_id may be identical.
         icmp_id = zlib.crc32("{}{}".format(process_id, thread_id).encode()) & 0xffff  # to avoid icmp_id collision.
@@ -305,11 +262,9 @@ def ping(dest_addr: str, timeout: int = 4, unit: str = "s", src_addr: str = None
             send_one_ping(sock=sock, dest_addr=dest_addr, icmp_id=icmp_id, seq=seq, size=size)
             delay = receive_one_ping(sock=sock, icmp_id=icmp_id, seq=seq, timeout=timeout)  # in seconds
         except HostUnknown as err:  # Unsolved
-            _debug(err)
             _raise(err)
             return False
         except PingError as err:
-            _debug(err)
             _raise(err)
             return None
         if delay is None:
@@ -349,7 +304,3 @@ def verbose_ping(dest_addr: str, count: int = 4, interval: float = 0, *args, **k
         if interval > 0 and i < (count - 1):
             time.sleep(interval)
 
-
-if __name__ == "__main__":
-    import command_line_ping3
-    command_line_ping3.main()

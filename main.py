@@ -5,8 +5,9 @@ import math
 import tkinter
 import threading
 
-from package.ping3 import ping
+import encodings.idna
 
+from package.ping3 import ping
 
 SERVERS = {
     "us-e": "pingtest-atl.brawlhalla.com",
