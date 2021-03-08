@@ -303,4 +303,3 @@ def verbose_ping(dest_addr: str, count: int = 4, interval: float = 0, *args, **k
             print("{value}{unit}".format(value=int(delay), unit=unit))
         if interval > 0 and i < (count - 1):
             time.sleep(interval)
-

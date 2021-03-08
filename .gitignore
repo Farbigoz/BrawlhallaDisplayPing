@@ -2,3 +2,5 @@ package/ping3/__pycache__/
 releases/
 .vscode/
 build/
+dist/
+__pycache__/
