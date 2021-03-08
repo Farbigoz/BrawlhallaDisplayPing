@@ -5,6 +5,10 @@ Download any [DisplayPing0.1_exe.zip](https://github.com/Farbigoz/BrawlhallaDisp
 ## Configuration
 
 Open config.cfg with any text editor  
+
+* text_color  
+* background_color  
+* server  
   
 ## Screens
 
