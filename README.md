@@ -4,11 +4,9 @@ Download any [DisplayPing0.1_exe.zip](https://github.com/Farbigoz/BrawlhallaDisp
 
 ## Configuration
 
-Open config.cfg with any text editor  
+Right click on the widget.
 
-* text_color  
-* background_color  
-* server  
+![Config](https://github.com/Farbigoz/BrawlhallaDisplayPing/blob/main/images/config.png)  
   
 ## Screens
 
