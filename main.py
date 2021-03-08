@@ -62,15 +62,24 @@ class App(tkinter.Tk):
         print("Server:", CONFIG["server"])
         server = SERVERS.get(CONFIG["server"], "eu")
 
+        avg_ping = ping(server, timeout=1, unit="ms")
+
         while True:
             result_ping = ping(server, timeout=1, unit="ms")
             
             if result_ping is None:
-                text = -1
+                result_ping = -1
             else:
-                text = math.trunc(result_ping)
+                result_ping = math.trunc(result_ping)
 
-            self.label.config(text=f"{text}ms")
+            self.label.config(text=f"{result_ping}ms")
+
+            if result_ping >= 0:
+                avg_ping = (result_ping + avg_ping) / 2
+                print(f"Ping: {result_ping}ms \t|\tAvg ping: {math.trunc(avg_ping)}ms")
+            else:
+                print("Lost package")
+
             time.sleep(1)
 
     def start_move(self, event):
