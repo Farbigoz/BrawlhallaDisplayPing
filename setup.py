@@ -7,9 +7,9 @@ excludes = ['unittest', 'email', 'html', 'http', 'urllib',
             'bz2', 'fnmatch', 'getopt', 'string',
             'quopri', 'copy', 'imp']
 
-include_files = ['package', "font.ttf", "config.cfg"]
+include_files = ['package']
 
-includes = ['platform', 'encodings.idna']
+includes = ['platform', 'encodings.idna', 'typing']
 
 options = {
     'build_exe': {

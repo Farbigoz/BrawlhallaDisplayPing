@@ -4,3 +4,5 @@ releases/
 build/
 dist/
 __pycache__/
+.idea/
+venv/

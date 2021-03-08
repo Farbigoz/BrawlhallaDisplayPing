@@ -4,7 +4,7 @@ block_cipher = None
 
 
 a = Analysis(['main.py'],
-             pathex=['E:\\Brawlhalla_ping_tester'],
+             pathex=['E:\\BrawlhallaDisplayPing'],
              binaries=[],
              datas=[],
              hiddenimports=[],
@@ -20,6 +20,7 @@ a = Analysis(['main.py'],
              win_private_assemblies=False,
              cipher=block_cipher,
              noarchive=False)
+a.datas += [('icon.ico','icon.ico','DATA')]
 pyz = PYZ(a.pure, a.zipped_data,
              cipher=block_cipher)
 exe = EXE(pyz,
