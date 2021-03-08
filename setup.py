@@ -24,6 +24,6 @@ setup(
     name = "test",
     version = "0.1",
     description = "Brawlhalla Display Ping",
-    executables = [Executable("main.py")],
+    executables = [Executable("main.py", targetName="BrawlhallaDisplayPing.exe")],
     options=options
 )
