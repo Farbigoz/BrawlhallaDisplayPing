@@ -158,13 +158,12 @@ class App(tkinter.Tk):
         if self.transparent_bg_val.get():
             self.background_transparent = True
             CONFIG.background_transparent = True
-            # self.label.config(bg=self.transp_color)
             self.wm_attributes('-transparentcolor', self.background_color)
         else:
             self.background_transparent = False
             CONFIG.background_transparent = False
-            # self.label.config(bg=self.background_color)
             self.wm_attributes('-transparentcolor', self.transp_color)
+            self.label.config(bg=self.background_color)
 
     # Select alpha window
     def select_alpha_window(self):
@@ -214,7 +213,7 @@ class App(tkinter.Tk):
         scrollbar.pack(side=tkinter.RIGHT, fill=tkinter.Y)
 
         font_list = tkinter.Listbox(window, yscrollcommand=scrollbar.set, width=300 - 17)
-        for font in tkinter.font.families(window):
+        for font in sorted(tkinter.font.families(window)):
             font_list.insert(tkinter.END, font)
 
         font_list.pack(side=tkinter.LEFT, fill=tkinter.Y)

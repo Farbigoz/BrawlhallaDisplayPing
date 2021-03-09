@@ -15,3 +15,5 @@ Right click on the widget.
 ![App 1](https://github.com/Farbigoz/BrawlhallaDisplayPing/blob/main/images/window1.png)  
   
 ![App 2](https://github.com/Farbigoz/BrawlhallaDisplayPing/blob/main/images/window2.png)  
+  
+![App 3](https://github.com/Farbigoz/BrawlhallaDisplayPing/blob/main/images/window3.png)  
