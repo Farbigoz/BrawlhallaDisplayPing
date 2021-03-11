@@ -2,7 +2,6 @@ import os
 import sys
 import time
 import math
-import random
 import threading
 
 from package.ping3 import ping
@@ -316,11 +315,12 @@ class OverlayWindow(Window):
         self.menu.Items.Add(close_item)
 
     def Loading(self):
+        print(CONFIG.text_color)
         self.SetServer(CONFIG.server)
         self.SetFont(CONFIG.font_name)
         self.SetFontSize(int(CONFIG.font_size))
         self.SetFontWeight(CONFIG.font_weight)
-        self.SetText(BrushFromHex(CONFIG.text_color))
+        self.SetTextColor(BrushFromHex(CONFIG.text_color))
 
         bg_color = CONFIG.background_color
 
@@ -407,7 +407,6 @@ class OverlayWindow(Window):
 
     def SetTextColor(self, color):
         self.label.Foreground = color
-        CONFIG.text_color = str(color)
 
     def SetServer(self, server):
         print("Server:", server)
