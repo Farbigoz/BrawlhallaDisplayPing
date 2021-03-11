@@ -7,9 +7,9 @@ excludes = ['unittest', 'email', 'html', 'http', 'urllib',
             'bz2', 'fnmatch', 'getopt', 'string',
             'quopri', 'copy', 'imp']
 
-include_files = ['package']
+include_files = ['package', 'icon.ico']
 
-includes = ['platform', 'encodings.idna', 'typing']
+includes = ['platform', 'typing', 'clr']
 
 options = {
     'build_exe': {

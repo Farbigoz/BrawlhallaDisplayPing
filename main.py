@@ -2,23 +2,27 @@ import os
 import sys
 import time
 import math
-import pkgutil
-import tkinter
+import random
 import threading
-
-import tkinter.ttk
-import tkinter.font
-import tkinter.colorchooser
-
-from sys import platform
-
-import encodings.idna
 
 from package.ping3 import ping
 from package.config import ConfigFile, ConfigElement
 
-FR_PRIVATE = 0x10
-FR_NOT_ENUM = 0x20
+if sys.platform.lower() not in ['cli','win32']:
+    print("only windows is supported for wpf")
+    time.sleep(10)
+    sys.exit(0)
+
+import clr
+clr.AddReference(r"wpf\PresentationFramework")
+import System
+from System.IO import StreamReader, BinaryWriter, MemoryStream, StringReader
+from System.Xml import XmlReader
+from System.Windows.Markup import XamlReader, XamlWriter
+from System.Threading import Thread, ThreadStart, ApartmentState
+from System.Windows import Application, Window, LogicalTreeHelper
+from System.Drawing import Font
+
 
 SERVERS = {
     "us-e": "pingtest-atl.brawlhalla.com",
@@ -30,21 +34,13 @@ SERVERS = {
     "jpn": "pingtest-jpn.brawlhalla.com",
 }
 
+
 # Config path
 LOCAL_DATA_FOLDER = "BrawlhallaDisplayPing"
-LOCAL_DATA_PATH = ""
+LOCAL_DATA_PATH = os.path.join(os.getenv("APPDATA"), LOCAL_DATA_FOLDER)
 
-if platform in ["win32", "win64"]:
-    LOCAL_DATA_PATH = os.path.join(os.getenv("APPDATA"), LOCAL_DATA_FOLDER)
-
-    if LOCAL_DATA_FOLDER not in os.listdir(os.getenv("APPDATA")):
-        os.mkdir(LOCAL_DATA_PATH)
-
-elif platform == "darwin":
-    LOCAL_DATA_PATH = os.path.join(os.getcwd(), "appconfig")
-
-    if "appconfig" not in os.listdir(os.getcwd()):
-        os.mkdir(LOCAL_DATA_PATH)
+if LOCAL_DATA_FOLDER not in os.listdir(os.getenv("APPDATA")):
+    os.mkdir(LOCAL_DATA_PATH)
 
 
 class ConfigMap(ConfigFile):
@@ -54,207 +50,312 @@ class ConfigMap(ConfigFile):
     font_name = ConfigElement(default="System")
     font_size = ConfigElement(default="12")
     server = ConfigElement(default="eu")
-    alpha = ConfigElement(default=0)
+    font_weight = ConfigElement(default="Bold")
 
 
 CONFIG = ConfigMap(os.path.join(LOCAL_DATA_PATH, "settings.cfg"))
 
 
-def resource_path(relative_path):
-    """ Get absolute path to resource, works for dev and for PyInstaller """
-    try:
-        # PyInstaller creates a temp folder and stores path in _MEIPASS
-        base_path = sys._MEIPASS
-    except Exception:
-        base_path = os.path.abspath(".")
+OverlayXaml = """
+<Window 
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" 
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        AllowsTransparency="True" Background="Transparent"
+        WindowStyle="None"
+        Title="Overlay"
+        Topmost="True"
+        IsHitTestVisible="True"
+        Height="200" Width="400"
+        ShowInTaskbar="False">
 
-    return os.path.join(base_path, relative_path)
+    <Grid Name="Grid" />
+</Window> 
+"""
+
+OverlayLabelXaml = """
+<Label
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    
+    Background="Red"
+    Foreground="White"
+        
+    FontFamily="Eras ITC"
+    FontWeight="Black"
+        
+    Content="9999ms"
+
+    VerticalAlignment="Center"
+    HorizontalAlignment="Center"
+    
+    HorizontalContentAlignment="Center"
+    VerticalContentAlignment="Center"
+/>
+"""
+
+"""
+    VerticalAlignment="Center"
+    HorizontalAlignment="Center"
+"""
+
+SettingsXaml = """
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" 
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        Title="Settings" Height="500" Width="300">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="25"></RowDefinition>
+            <RowDefinition></RowDefinition>
+            <RowDefinition Height="2"></RowDefinition>
+            <RowDefinition Height="25"></RowDefinition>
+            <RowDefinition Height="2"></RowDefinition>
+            <RowDefinition Height="25"></RowDefinition>
+            <RowDefinition Height="2"></RowDefinition>
+            <RowDefinition Height="25"></RowDefinition>
+            <RowDefinition Height="2"></RowDefinition>
+            <RowDefinition Height="25"></RowDefinition>
+            <RowDefinition Height="2"></RowDefinition>
+            <RowDefinition Height="25"></RowDefinition>
+            <RowDefinition Height="2"></RowDefinition>
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="120"></ColumnDefinition>
+            <ColumnDefinition></ColumnDefinition>
+        </Grid.ColumnDefinitions>
+        
+        <Label 
+            Content="Fonts:"
+            VerticalAlignment="Center"
+            VerticalContentAlignment="Center"
+            Grid.Column="0" Grid.Row="0"/>
+        
+        <ListBox
+            Name="FontsList" 
+            SelectionMode="Single"
+            Grid.Column="0" Grid.Row="1" Grid.ColumnSpan="2">
+        </ListBox>
+
+        <Label 
+            Content="Font size:"
+            VerticalAlignment="Center"
+            VerticalContentAlignment="Center"
+            Grid.Column="0" Grid.Row="3"/>
+
+        <Grid
+            Grid.Column="1" Grid.Row="3">
+            <Grid.RowDefinitions>
+                <RowDefinition></RowDefinition>
+                <RowDefinition></RowDefinition>
+            </Grid.RowDefinitions>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition></ColumnDefinition>
+                <ColumnDefinition Width="15"></ColumnDefinition>
+            </Grid.ColumnDefinitions>
+            
+            <TextBox
+                Name="FontSize"
+                VerticalContentAlignment="Center"
+                Grid.Column="0" Grid.Row="0" Grid.RowSpan="2"/>
+
+            <Button 
+                Name="FontSizeUp"
+                Grid.Column="1" Grid.Row="0"/>
+            <Button
+                Name="FontSizeDown"
+                Grid.Column="1" Grid.Row="1"/>
+        </Grid>
+
+        <Label 
+            Content="Font style:"
+            VerticalAlignment="Center"
+            VerticalContentAlignment="Center"
+            Grid.Column="0" Grid.Row="5"/>
+
+        <ComboBox 
+            Name="FontWeight"
+            Grid.Column="1" Grid.Row="5">
+        </ComboBox>
+
+        <Label 
+            Content="Text color:"
+            VerticalAlignment="Center"
+            VerticalContentAlignment="Center"
+            Grid.Column="0" Grid.Row="7"/>
+        
+        <Button 
+            Name="TextColor"
+            Background="White"
+            Grid.Column="1" Grid.Row="7"/>
+        
+        <Label 
+            Content="Background clolor:"
+            VerticalAlignment="Center"
+            VerticalContentAlignment="Center"
+            Grid.Column="0" Grid.Row="9"/>
+
+        <Grid
+            Grid.Column="1" Grid.Row="9">
+            <Grid.RowDefinitions>
+                <RowDefinition></RowDefinition>
+            </Grid.RowDefinitions>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition></ColumnDefinition>
+                <ColumnDefinition Width="75"></ColumnDefinition>
+                <ColumnDefinition Width="20"></ColumnDefinition>
+            </Grid.ColumnDefinitions>
+
+            <Button 
+                Name="BackgroundColor"
+                Background="Black"
+                Grid.Column="0"/>
+
+            <Label 
+                Content="Transparent:"
+                VerticalAlignment="Center"
+                VerticalContentAlignment="Center"
+                Grid.Column="1"/>
+
+            <CheckBox 
+                Name="BackgroundTranparent"
+                VerticalContentAlignment="Center"
+                Grid.Column="2" Margin="0,1,0,-1"/>
+
+        </Grid>
+
+        <Label 
+            Content="Server:"
+            VerticalAlignment="Center"
+            VerticalContentAlignment="Center"
+            Grid.Column="0" Grid.Row="11"/>
+
+        <ComboBox 
+            Name="Servers"
+            Grid.Column="1" Grid.Row="11">
+        </ComboBox>
+
+    </Grid>
+
+</Window>
+"""
 
 
-class App(tkinter.Tk):
-    transp_color = '#010203'
+FontWeight = {
+    "Thin": System.Windows.FontWeights.Thin,
+    "ExtraLight": System.Windows.FontWeights.ExtraLight,
+    "UltraLight": System.Windows.FontWeights.UltraLight,
+    "Light": System.Windows.FontWeights.Light,
+    "Normal": System.Windows.FontWeights.Normal,
+    "Regular": System.Windows.FontWeights.Regular,
+    "Medium": System.Windows.FontWeights.Medium,
+    "DemiBold": System.Windows.FontWeights.DemiBold,
+    "SemiBold": System.Windows.FontWeights.SemiBold,
+    "Bold": System.Windows.FontWeights.Bold,
+    "ExtraBold": System.Windows.FontWeights.ExtraBold,
+    "UltraBold": System.Windows.FontWeights.UltraBold,
+    "Black": System.Windows.FontWeights.Black,
+    "ExtraBlack": System.Windows.FontWeights.ExtraBlack
+}
 
+
+def BrushFromHex(hex_color):
+    return System.Windows.Media.BrushConverter().ConvertFrom(hex_color)
+    
+
+def ColorDialog(alpha=255):
+        color_dialog = System.Windows.Forms.ColorDialog()
+        if color_dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK:
+            return BrushFromHex(
+                '#%02x%02x%02x%02x' % (alpha, color_dialog.Color.R, color_dialog.Color.G, color_dialog.Color.B)
+            )
+
+        return None
+
+
+class OverlayWindow(Window):
     def __init__(self):
-        self.app_run = True
+        self.window = XamlReader.Load(XmlReader.Create(StringReader(OverlayXaml)))
+        self.InitializeComponent()
+        self.Loading()
+        
+        self.settings = SettingsWindow(self)
 
-        tkinter.Tk.__init__(self)
-        self.overrideredirect(True)
-        self.wm_attributes("-topmost", True)
+        threading.Thread(target=self.PingUpdater).start()
+        Application().Run(self.window)
 
-        self.wm_attributes('-transparentcolor', self.transp_color)
-        self.wm_attributes('-alpha', 1 - (CONFIG.alpha / 100))
+    def InitializeComponent(self):
+        self.server = "eu"
 
-        self.font_name = CONFIG.font_name
-        self.font_size = CONFIG.font_size
-        self.text_color = CONFIG.text_color
-        self.background_color = CONFIG.background_color
-        self.background_transparent = CONFIG.background_transparent
+        self.window.MouseLeftButtonDown += self.MoveOverlay
+        self.window.MouseRightButtonUp += self.OverlayRightClick
 
-        if self.background_transparent:
-            bg_color = self.transp_color
-        else:
-            bg_color = self.background_color
+        self.grid = LogicalTreeHelper.FindLogicalNode(self.window, "Grid")
+        self.label = XamlReader.Load(XmlReader.Create(StringReader(OverlayLabelXaml)))
+        self.check_label = XamlReader.Load(XmlReader.Create(StringReader(OverlayLabelXaml)))
+        
+        self.grid.Children.Add(self.label)
 
-        self.label = tkinter.Label(self, text="160ms", font=(self.font_name, self.font_size),
-                                   fg=self.text_color, bg=bg_color)
-        self.label.config(height=1, width=6)
-        self.label.pack(side="right", fill="both", expand=True)
+        #self.label.VerticalAlignment = 0
+        #self.label.HorizontalAlignment = 0
 
-        self.label.bind("<ButtonPress-1>", self.start_move)
-        self.label.bind("<ButtonRelease-1>", self.stop_move)
-        self.label.bind("<B1-Motion>", self.on_motion)
+        self.check_label.Background = BrushFromHex("#00000000")
+        self.check_label.Foreground = BrushFromHex("#00000000")
+        self.check_label.Content = "9999ms"
+        self.grid.Children.Add(self.check_label)
+        
+        # make menu
+        self.menu = System.Windows.Forms.ContextMenuStrip()
 
-        self.label.bind("<Button-3>", self.do_popup)
+        settings_item = System.Windows.Forms.ToolStripMenuItem("Settings")
+        settings_item.Click += self.OpenSettings
 
-        self.transparent_bg_val = tkinter.BooleanVar(value=self.background_transparent)
+        close_item = System.Windows.Forms.ToolStripMenuItem("Close")
+        close_item.Click += self.CloseOverlay
 
-        self.menu = tkinter.Menu(self, tearoff=0)
-        self.menu_servers = tkinter.Menu(self, tearoff=1)
-        self.menu.add_command(label="Select font", command=self.select_font_window)
-        self.menu.add_command(label="Set text color", command=self.select_text_color)
-        self.menu.add_command(label="Set background color", command=self.select_bg_color)
-        self.menu.add_command(label="Set widget transparent", command=self.select_alpha_window)
-        self.menu.add_checkbutton(label="Transparent background", command=self.select_transparent_bg,
-                                  onvalue=1, offvalue=0, variable=self.transparent_bg_val)
-        self.menu.add_separator()
-        self.menu.add_cascade(label="Set server", menu=self.menu_servers)
-        self.menu.add_separator()
-        self.menu.add_command(label="Close", command=self.stop_app)
+        self.menu.Items.Add(settings_item)
+        self.menu.Items.Add(close_item)
 
-        self._server = tkinter.StringVar(self, CONFIG.server)
+    def Loading(self):
+        self.SetServer(CONFIG.server)
+        self.SetFont(CONFIG.font_name)
+        self.SetFontSize(int(CONFIG.font_size))
+        self.SetFontWeight(CONFIG.font_weight)
+        self.SetText(BrushFromHex(CONFIG.text_color))
 
-        for server in SERVERS.keys():
-            self.menu_servers.add_radiobutton(label=server, value=server, command=self.server_selected,
-                                              variable=self._server)
+        bg_color = CONFIG.background_color
 
-        threading.Thread(target=self.ping_updater).start()
+        if CONFIG.background_transparent:
+            if len(bg_color) == 7:
+                bg_color = f"#00{bg_color[1:]}"
+            else:
+                bg_color = f"#00{bg_color[3:]}"
 
-    def server_selected(self):
-        CONFIG.server = self._server.get()
-        print(f"Server: {CONFIG.server}")
+        self.SetBackgroundColor(BrushFromHex(bg_color))
 
-    # Select colors
-    def select_text_color(self):
-        color_code = tkinter.colorchooser.askcolor(title="Choose text color")
-        hex_color = color_code[1]
+    def SizeUpdater(self, *args):
+        if self.check_label.ActualWidth > 0:
+            self.window.Width = self.check_label.ActualWidth * 1.1
+            self.window.Height = self.check_label.ActualHeight * 1.1
+        self.label.Width = self.check_label.ActualWidth
+    
+    def MoveOverlay(self, sender, e):
+        self.window.DragMove()
 
-        if hex_color is not None:
-            self.text_color = hex_color
-            CONFIG.text_color = self.text_color
-            self.label.config(fg=self.text_color)
+    def OverlayRightClick(self, sender, e):
+        pos = System.Windows.Forms.Control.MousePosition
+        self.menu.Show(pos)
 
-    def select_bg_color(self):
-        color_code = tkinter.colorchooser.askcolor(title="Choose background color")
-        hex_color = color_code[1]
-
-        if hex_color is not None:
-            self.background_color = hex_color
-            CONFIG.background_color = self.background_color
-            self.label.config(bg=self.background_color)
-
-            self.select_transparent_bg()
-
-    def select_transparent_bg(self):
-        if self.transparent_bg_val.get():
-            self.background_transparent = True
-            CONFIG.background_transparent = True
-            self.wm_attributes('-transparentcolor', self.background_color)
-        else:
-            self.background_transparent = False
-            CONFIG.background_transparent = False
-            self.wm_attributes('-transparentcolor', self.transp_color)
-            self.label.config(bg=self.background_color)
-
-    # Select alpha window
-    def select_alpha_window(self):
-        window = tkinter.Tk()
-        window.iconbitmap(resource_path("icon.ico"))
-        window.wm_title("Set alpha")
-        window.geometry("250x30")
-        # window.resizable(0, 0)
-
-        # Font size
-        var = tkinter.StringVar(window)
-        var.set(str(CONFIG.alpha))
-
-        validate_num = (window.register(lambda s, S: self.num_validate(window, s, S)), '%s', '%S')
-
-        alpha_size = tkinter.Spinbox(window, from_=0, to=50, width=300, validate="all",
-                                     validatecommand=validate_num, command=lambda: self.alpha_selected(alpha_size),
-                                     textvariable=var)
-        alpha_size.pack(side=tkinter.BOTTOM, fill=tkinter.X)
-
-    def alpha_selected(self, alpha_size: tkinter.Spinbox):
-        alpha_size_: str = alpha_size.get()
-        if alpha_size_ != "" and alpha_size_.isdigit() and (50 >= int(alpha_size_) >= 0):
-            CONFIG.alpha = int(alpha_size_)
-            self.wm_attributes('-alpha', 1 - (CONFIG.alpha / 100))
-
-    # Select font window
-    def select_font_window(self):
-        window = tkinter.Tk()
-        window.iconbitmap(resource_path("icon.ico"))
-        window.wm_title("Set font")
-        window.geometry("300x500")
-        # window.resizable(0, 0)
-
-        # Font size
-        var = tkinter.StringVar(window)
-        var.set(str(self.font_size))
-
-        validate_num = (window.register(lambda s, S: self.num_validate(window, s, S)), '%s', '%S')
-
-        font_size = tkinter.Spinbox(window, from_=5, to=40, width=300, validate="all", validatecommand=validate_num,
-                                    command=lambda: self.font_size_selected(font_size), textvariable=var, )
-        font_size.pack(side=tkinter.BOTTOM, fill=tkinter.X)
-
-        # Fonts list
-        scrollbar = tkinter.Scrollbar(window)
-        scrollbar.pack(side=tkinter.RIGHT, fill=tkinter.Y)
-
-        font_list = tkinter.Listbox(window, yscrollcommand=scrollbar.set, width=300 - 17)
-        for font in sorted(tkinter.font.families(window)):
-            font_list.insert(tkinter.END, font)
-
-        font_list.pack(side=tkinter.LEFT, fill=tkinter.Y)
-        scrollbar.config(command=font_list.yview)
-
-        font_list.bind('<<ListboxSelect>>', lambda _: self.font_selected(font_list))
-
-    def font_selected(self, font_list: tkinter.Listbox):
-        self.font_name = str(font_list.get(font_list.curselection()))
-        CONFIG.font_name = self.font_name
-        self.label.config(font=(self.font_name, self.font_size))
-
-    def font_size_selected(self, font_size: tkinter.Spinbox):
-        font_size_: str = font_size.get()
-        if font_size_ != "" and font_size_.isdigit() and (40 >= int(font_size_) >= 5):
-            self.font_size = font_size_
-            CONFIG.font_size = self.font_size
-            self.label.config(font=(self.font_name, self.font_size))
-
-    # Popup actions
-    def do_popup(self, event):
-        try:
-            self.menu.tk_popup(event.x_root, event.y_root)
-        finally:
-            self.menu.grab_release()
-
-    # Ping updater
-    def ping_updater(self):
-        print("Server:", CONFIG["server"])
-
+    def PingUpdater(self, *args):
         avg_ping = 0
+        
+        while True:
 
-        while self.app_run:
-            result_ping = ping(SERVERS.get(self._server.get(), "eu"), timeout=1, unit="ms")
+            result_ping = ping(SERVERS.get(self.server, "eu"), timeout=1, unit="ms")
 
             if result_ping is None:
                 result_ping = -1
             else:
                 result_ping = math.trunc(result_ping)
-
-            self.label.config(text=f"{result_ping}ms")
 
             if result_ping >= 0:
                 avg_ping = (result_ping + avg_ping) / 2
@@ -262,39 +363,244 @@ class App(tkinter.Tk):
             else:
                 print("Lost package")
 
+
+            self.window.Dispatcher.Invoke(System.Action(lambda: self.SetText(f"{result_ping}ms")))
+
             time.sleep(1)
 
-        sys.exit(0)
+    # Set
+    def SetText(self, text):
+        self.label.Content = text
 
-    # Move widget
-    def start_move(self, event):
-        self.x = event.x
-        self.y = event.y
+        self.window.Dispatcher.Invoke(System.Windows.Threading.DispatcherPriority.Render, System.Action(self.SizeUpdater))
 
-    def stop_move(self, event):
-        self.x = None
-        self.y = None
+    def SetFont(self, font):
+        self.label.FontFamily = System.Windows.Media.FontFamily(font)
+        self.check_label.FontFamily = self.label.FontFamily
 
-    def on_motion(self, event):
-        deltax = event.x - self.x
-        deltay = event.y - self.y
-        x = self.winfo_x() + deltax
-        y = self.winfo_y() + deltay
-        self.geometry(f"+{x}+{y}")
+        self.window.Dispatcher.Invoke(System.Windows.Threading.DispatcherPriority.Render, System.Action(self.SizeUpdater))
 
-    # Validator
-    def num_validate(self, root, s, S):
-        # disallow anything but numbers
-        valid = S == '' or S.isdigit()
-        if not valid:
-            root.bell()
-        return valid
+        CONFIG.font_name = font
 
-    # Stop app
-    def stop_app(self):
-        self.destroy()
-        self.app_run = False
+    def SetFontSize(self, size):
+        self.label.FontSize = size
+        self.check_label.FontSize = self.label.FontSize
+
+        self.window.Dispatcher.Invoke(System.Windows.Threading.DispatcherPriority.Render, System.Action(self.SizeUpdater))
+
+        CONFIG.font_size = str(size)
+        
+    def SetFontWeight(self, font_weight):
+        CONFIG.font_weight = font_weight
+
+        font_weight = FontWeight.get(font_weight, System.Windows.FontWeights.Bold)
+
+        self.label.FontWeight = font_weight
+        self.check_label.FontWeight = self.label.FontWeight
+
+        self.window.Dispatcher.Invoke(System.Windows.Threading.DispatcherPriority.Render, System.Action(self.SizeUpdater))
+
+    def SetBackgroundColor(self, color):
+        self.label.Background = color
+        CONFIG.background_color = str(color)
+        CONFIG.background_transparent = str(color).startswith("#00")
+
+    def SetTextColor(self, color):
+        self.label.Foreground = color
+        CONFIG.text_color = str(color)
+
+    def SetServer(self, server):
+        print("Server:", server)
+        self.server = server
+        CONFIG.server = server
+
+    # Get
+    def GetFont(self):
+        return self.label.FontFamily
+
+    def GetFontSize(self):
+        return self.label.FontSize
+
+    def GetFontWeight(self):
+        return self.label.FontWeight
+
+    def GetBackgroundColor(self):
+        return self.label.Background
+
+    def GetTextColor(self):
+        return self.label.Foreground
 
 
-app = App()
-app.mainloop()
+    def CloseOverlay(self, *args):
+        self.settings.Close()
+        self.window.Close()
+
+    # Settings
+    def OpenSettings(self, *args):
+        self.settings.Show()
+
+
+class SettingsWindow(Window):
+    MinFontSize = 5
+    MaxFontSize = 100
+
+    def __init__(self, overlay: OverlayWindow):
+        self.overlay = overlay
+
+        self.window = XamlReader.Load(XmlReader.Create(StringReader(SettingsXaml)))
+        self.InitializeComponent()
+        self.Loading()
+
+    def InitializeComponent(self):
+        self.window.Closing += self.FormClosing
+
+        self.num_regex = System.Text.RegularExpressions.Regex("[^0-9]+")
+
+        self.fonts_list = LogicalTreeHelper.FindLogicalNode(self.window, "FontsList")
+        self.fonts_list.SelectionChanged += self.FontSelected
+
+        self.fonts_size = LogicalTreeHelper.FindLogicalNode(self.window, "FontSize")
+        self.fonts_size.PreviewKeyDown += self.KeyDownFontSize
+        self.fonts_size.KeyDown += self.KeyDownFontSize
+        System.Windows.DataObject.AddPastingHandler(
+            self.fonts_size, System.Windows.DataObjectPastingEventHandler(self.PasteFontSize)
+        )
+
+        self.font_size_up = LogicalTreeHelper.FindLogicalNode(self.window, "FontSizeUp")
+        self.font_size_up.Click += lambda sender, e: self.FontSizeUp()
+
+        self.font_size_down = LogicalTreeHelper.FindLogicalNode(self.window, "FontSizeDown")
+        self.font_size_down.Click += lambda sender, e: self.FontSizeDown()
+
+        self.font_weight = LogicalTreeHelper.FindLogicalNode(self.window, "FontWeight")
+        self.font_weight.SelectionChanged += self.FontWeightelected
+
+        self.text_color = LogicalTreeHelper.FindLogicalNode(self.window, "TextColor")
+        self.text_color.Click += self.SetTextColor
+
+        self.bg_color = LogicalTreeHelper.FindLogicalNode(self.window, "BackgroundColor")
+        self.bg_color.Click += self.SetBackgroundColor
+
+        self.bg_tranparent = LogicalTreeHelper.FindLogicalNode(self.window, "BackgroundTranparent")
+        self.bg_tranparent.Click += self.SetBackgroundTransparent
+
+        self.servers = LogicalTreeHelper.FindLogicalNode(self.window, "Servers")
+        self.servers.SelectionChanged += self.ServerSelected
+
+    def Loading(self):
+        for font in sorted([f.Source for f in System.Windows.Media.Fonts.SystemFontFamilies]):
+            font_item = System.Windows.Controls.ListBoxItem()
+            font_item.Content = font
+            index = self.fonts_list.Items.Add(font_item)
+
+            if font == str(self.overlay.GetFont()):
+                self.fonts_list.SelectedIndex = index
+
+        self.fonts_size.Text = str(int(self.overlay.GetFontSize()))
+        
+        for weight, weight_cls in FontWeight.items():
+            index = self.font_weight.Items.Add(weight)
+
+            if self.overlay.GetFontWeight() == weight_cls:
+                self.font_weight.SelectedIndex = index
+
+        self.text_color.Background = self.overlay.GetTextColor()
+        self.bg_color.Background = BrushFromHex("#FF" + str(self.overlay.GetBackgroundColor())[3:])
+        self.bg_tranparent.IsChecked = str(self.overlay.GetBackgroundColor()).startswith("#00")
+
+        for server in SERVERS.keys():
+            index = self.servers.Items.Add(server)
+
+            if self.overlay.server == server:
+                self.servers.SelectedIndex = index
+
+    # Fonts
+    def FontSelected(self, sender, e):
+        self.overlay.SetFont(self.fonts_list.SelectedItem.Content)
+
+    # Font size
+    def PasteFontSize(self, sender, e):
+        e.CancelCommand()
+
+    def KeyDownFontSize(self, sender, e):
+        if e.Key == 24:
+            self.FontSizeUp()
+
+        elif e.Key == 26:
+            self.FontSizeDown()
+        
+        e.Handled = True
+
+    def FontSizeUp(self):
+        if self.fonts_size.Text.strip() == "":
+            self.fonts_size.Text = f"{self.MinFontSize}"
+
+        text_size = int(self.fonts_size.Text)
+        if text_size < self.MaxFontSize:
+            self.fonts_size.Text = str(text_size+1)
+            self.CommitFontSize()
+
+    def FontSizeDown(self):
+        if self.fonts_size.Text.strip() == "":
+            self.fonts_size.Text = f"{self.MinFontSize}"
+
+        text_size = int(self.fonts_size.Text)
+        if text_size > self.MinFontSize:
+            self.fonts_size.Text = str(text_size-1)
+            self.CommitFontSize()
+
+    def CommitFontSize(self, size=None):
+        if size is None:
+            self.overlay.SetFontSize(int(self.fonts_size.Text))
+        else:
+            self.overlay.SetFontSize(size)
+
+    # Font style
+    def FontWeightelected(self, sender, e):
+        self.overlay.SetFontWeight(self.font_weight.SelectedItem)
+
+    # Colors
+    def SetTextColor(self, sender, e):
+        color = ColorDialog()
+        if color is not None:
+            self.text_color.Background = color
+            self.overlay.SetTextColor(color)
+
+    def SetBackgroundColor(self, sender, e):
+        color = ColorDialog(0 if self.bg_tranparent.IsChecked else 255)
+        if color is not None:
+            self.bg_color.Background = BrushFromHex("#FF" + str(color)[3:])
+            self.overlay.SetBackgroundColor(color)
+
+    def SetBackgroundTransparent(self, sender, e):
+        color_hex = str(self.overlay.GetBackgroundColor())
+
+        if self.bg_tranparent.IsChecked:
+            color_hex = f"#00{color_hex[3:]}"
+        else:
+            color_hex = f"#FF{color_hex[3:]}"
+
+        self.overlay.SetBackgroundColor(BrushFromHex(color_hex))
+
+    # Server
+    def ServerSelected(self, sender, e):
+        if self.servers.SelectedItem != self.overlay.server:
+            self.overlay.SetServer(self.servers.SelectedItem)
+
+    # Utils
+    def Show(self):
+        self.window.Show()
+
+    def FormClosing(self, sender, e):
+        e.Cancel = True
+        self.window.Hide()
+
+    def Close(self):
+        self.window.Close()
+
+
+if __name__ == '__main__':
+    thread = Thread(ThreadStart(OverlayWindow))
+    thread.SetApartmentState(ApartmentState.STA)
+    thread.Start()
+    thread.Join()
