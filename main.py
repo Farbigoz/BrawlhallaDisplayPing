@@ -5,6 +5,7 @@ import math
 import threading
 
 from package.ping3 import ping
+from package.checkupdate import CheckUpdate
 from package.config import ConfigFile, ConfigElement
 
 if sys.platform.lower() not in ['cli','win32']:
@@ -280,6 +281,7 @@ class OverlayWindow(Window):
         self.settings = SettingsWindow(self)
 
         threading.Thread(target=self.PingUpdater).start()
+        threading.Thread(target=self.CheckUpdate).start()
         Application().Run(self.window)
 
     def InitializeComponent(self):
@@ -436,6 +438,20 @@ class OverlayWindow(Window):
     # Settings
     def OpenSettings(self, *args):
         self.settings.Show()
+
+    def CheckUpdate(self):
+        update_url = CheckUpdate()
+
+        if update_url is not None:
+            msg = System.Windows.Forms.MessageBox.Show(
+                "New version is available.\nVisit homepage?",
+                "New version available",
+                System.Windows.Forms.MessageBoxButtons.YesNo,
+                System.Windows.MessageBoxImage.Information
+            )
+            
+            if msg == System.Windows.MessageBoxResult.Yes:
+                System.Diagnostics.Process.Start(update_url)
 
 
 class SettingsWindow(Window):
