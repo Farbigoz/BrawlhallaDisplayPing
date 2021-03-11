@@ -315,7 +315,6 @@ class OverlayWindow(Window):
         self.menu.Items.Add(close_item)
 
     def Loading(self):
-        print(CONFIG.text_color)
         self.SetServer(CONFIG.server)
         self.SetFont(CONFIG.font_name)
         self.SetFontSize(int(CONFIG.font_size))
