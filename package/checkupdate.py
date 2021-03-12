@@ -4,7 +4,7 @@ import json.decoder
 import ssl
 
 
-TAG_NAME = "1.0release"
+TAG_NAME = "1.1release"
 
 PATH = "/repos/Farbigoz/BrawlhallaDisplayPing/releases/latest"
 HOST = 'api.github.com'
