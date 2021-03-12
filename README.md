@@ -1,6 +1,6 @@
 # Brawlhalla Display Ping ![Python 3.6+](https://img.shields.io/badge/python-3.6+-blue.svg)
 
-Download [BrawlhallaDisplayPing.exe](https://github.com/Farbigoz/BrawlhallaDisplayPing/releases/tag/1.0release) and run this file  
+Download [BrawlhallaDisplayPing.exe](https://github.com/Farbigoz/BrawlhallaDisplayPing/releases/tag/1.1release) and run this file  
 
 ## Configuration
 
