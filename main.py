@@ -251,6 +251,8 @@ ConsoleXaml = """
 </Window>
 """
 
+MinFontSize = 5
+MaxFontSize = 100
 
 FontWeight = {
     "Thin": System.Windows.FontWeights.Thin,
@@ -295,9 +297,23 @@ def ResourcePath(relative_path):
     return os.path.join(base_path, relative_path)
 
 
-class OverlayWindow(Window):
+class Main(Window):
+    def __init__(self):
+        self.window = OverlayWindow()
+        Application().Run(self.window.window)
+
+
+class OverlayWindow:
+    __slots__ = (
+        "window", "console", "settings",
+        "server",
+        "label", "check_label",
+        "menu"
+    )
+
     def __init__(self):
         self.window = XamlReader.Load(XmlReader.Create(StringReader(OverlayXaml)))
+
         self.console = Console()
 
         self.InitializeComponent()
@@ -305,11 +321,7 @@ class OverlayWindow(Window):
 
         self.settings = SettingsWindow(self)
 
-        self.console.Show()
-
-        threading.Thread(target=self.PingUpdater).start()
-        threading.Thread(target=self.CheckUpdate).start()
-        Application().Run(self.window)
+        self.Run()
 
     def InitializeComponent(self):
         self.server = "eu"
@@ -320,18 +332,19 @@ class OverlayWindow(Window):
         self.window.MouseLeftButtonDown += self.MoveOverlay
         self.window.MouseRightButtonUp += self.OverlayRightClick
 
-        self.grid = LogicalTreeHelper.FindLogicalNode(self.window, "Grid")
+        grid = LogicalTreeHelper.FindLogicalNode(self.window, "Grid")
         self.label = XamlReader.Load(XmlReader.Create(StringReader(OverlayLabelXaml)))
         self.check_label = XamlReader.Load(XmlReader.Create(StringReader(OverlayLabelXaml)))
 
         self.check_label.VerticalAlignment = 0
         self.check_label.HorizontalAlignment = 0
-        
-        self.grid.Children.Add(self.label)
+
         self.check_label.Background = BrushFromHex("#00000000")
         self.check_label.Foreground = BrushFromHex("#00000000")
         self.check_label.Content = "9999ms"
-        self.grid.Children.Add(self.check_label)
+
+        grid.Children.Add(self.label)
+        grid.Children.Add(self.check_label)
         
         # make menu
         self.menu = System.Windows.Forms.ContextMenuStrip()
@@ -350,7 +363,7 @@ class OverlayWindow(Window):
         self.menu.Items.Add(close_item)
 
         # Icon menu
-        menu = System.Windows.Forms.ContextMenu()
+        menu_icon = System.Windows.Forms.ContextMenu()
 
         settings_item_icon = System.Windows.Forms.MenuItem("Settings")
         settings_item_icon.Click += self.OpenSettings
@@ -361,14 +374,14 @@ class OverlayWindow(Window):
         close_item_icon = System.Windows.Forms.MenuItem("Close")
         close_item_icon.Click += self.CloseOverlay
 
-        menu.MenuItems.Add(settings_item_icon)
-        menu.MenuItems.Add(console_item_icon)
-        menu.MenuItems.Add(close_item_icon)
+        menu_icon.MenuItems.Add(settings_item_icon)
+        menu_icon.MenuItems.Add(console_item_icon)
+        menu_icon.MenuItems.Add(close_item_icon)
 
         notify_icon = System.Windows.Forms.NotifyIcon()
         notify_icon.Text = "Brawlhalla Display Ping"
         notify_icon.Icon = System.Drawing.Icon(ResourcePath("icon.ico"))
-        notify_icon.ContextMenu = menu
+        notify_icon.ContextMenu = menu_icon
         notify_icon.Click += self.ClickTrayIcon
         notify_icon.Visible = True
 
@@ -389,6 +402,12 @@ class OverlayWindow(Window):
 
         self.SetBackgroundColor(BrushFromHex(bg_color))
 
+    def Run(self):
+        self.console.Show()
+
+        threading.Thread(target=self.PingUpdater).start()
+        threading.Thread(target=self.CheckUpdate).start()
+
     def SizeUpdater(self, *args):
         if self.check_label.ActualWidth > 0:
             self.window.Width = self.check_label.ActualWidth * 1.1
@@ -402,6 +421,7 @@ class OverlayWindow(Window):
         pos = System.Windows.Forms.Control.MousePosition
         self.menu.Show(pos)
 
+    # Process
     def PingUpdater(self, *args):
         avg_ping = 0
         
@@ -530,9 +550,13 @@ class OverlayWindow(Window):
         self.window.Close()
 
 
-class SettingsWindow(Window):
-    MinFontSize = 5
-    MaxFontSize = 100
+class SettingsWindow:
+    __slots__ = (
+        "window", "overlay",
+        "num_regex",
+        "fonts_list", "fonts_size", "font_size_up", "font_size_down", "font_weight",
+        "text_color", "bg_color", "bg_tranparent", "servers"
+    )
 
     def __init__(self, overlay: OverlayWindow):
         self.overlay = overlay
@@ -623,19 +647,19 @@ class SettingsWindow(Window):
 
     def FontSizeUp(self):
         if self.fonts_size.Text.strip() == "":
-            self.fonts_size.Text = f"{self.MinFontSize}"
+            self.fonts_size.Text = f"{MinFontSize}"
 
         text_size = int(self.fonts_size.Text)
-        if text_size < self.MaxFontSize:
+        if text_size < MaxFontSize:
             self.fonts_size.Text = str(text_size+1)
             self.CommitFontSize()
 
     def FontSizeDown(self):
         if self.fonts_size.Text.strip() == "":
-            self.fonts_size.Text = f"{self.MinFontSize}"
+            self.fonts_size.Text = f"{MinFontSize}"
 
         text_size = int(self.fonts_size.Text)
-        if text_size > self.MinFontSize:
+        if text_size > MinFontSize:
             self.fonts_size.Text = str(text_size-1)
             self.CommitFontSize()
 
@@ -689,7 +713,11 @@ class SettingsWindow(Window):
         self.window.Close()
 
 
-class Console(Window):
+class Console:
+    __slots__ = (
+        "window", "console"
+    )
+
     def __init__(self):
         self.window = XamlReader.Load(XmlReader.Create(StringReader(ConsoleXaml)))
         self.InitializeComponent()
@@ -721,7 +749,7 @@ class Console(Window):
 
 
 if __name__ == '__main__':
-    thread = Thread(ThreadStart(OverlayWindow))
+    thread = Thread(ThreadStart(Main))
     thread.SetApartmentState(ApartmentState.STA)
     thread.Start()
     thread.Join()

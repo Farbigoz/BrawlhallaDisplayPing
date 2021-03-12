@@ -4,7 +4,7 @@ block_cipher = None
 
 
 a = Analysis(['main.py'],
-             pathex=['E:\\BrawlhallaDisplayPing'],
+             pathex=[],
              binaries=[],
              datas=[],
              hiddenimports=[],
