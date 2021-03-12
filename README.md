@@ -7,6 +7,8 @@ Download [BrawlhallaDisplayPing.exe](https://github.com/Farbigoz/BrawlhallaDispl
 Right click on the widget.
 
 ![Config](https://github.com/Farbigoz/BrawlhallaDisplayPing/blob/main/images/config.png)  
+
+![Tray app](https://github.com/Farbigoz/BrawlhallaDisplayPing/blob/main/images/tray_app.png)  
   
 ## Screens
 
