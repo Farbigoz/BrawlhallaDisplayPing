@@ -21,7 +21,6 @@ from System.Xml import XmlReader
 from System.Windows.Markup import XamlReader, XamlWriter
 from System.Threading import Thread, ThreadStart, ApartmentState
 from System.Windows import Application, Window, LogicalTreeHelper
-from System.Drawing import Font
 
 
 SERVERS = {
@@ -83,18 +82,10 @@ OverlayLabelXaml = """
     FontWeight="Black"
         
     Content="9999ms"
-
-    VerticalAlignment="Center"
-    HorizontalAlignment="Center"
     
     HorizontalContentAlignment="Center"
     VerticalContentAlignment="Center"
 />
-"""
-
-"""
-    VerticalAlignment="Center"
-    HorizontalAlignment="Center"
 """
 
 SettingsXaml = """
@@ -239,6 +230,27 @@ SettingsXaml = """
 </Window>
 """
 
+ConsoleXaml = """
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" 
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        Title="Console" Height="300" Width="500">
+    <RichTextBox 
+            Name="Console"
+            VerticalScrollBarVisibility="Auto" 
+            Background="Black"
+            Foreground="Green"
+            IsReadOnly="True">
+        <RichTextBox.Resources>
+            <Style TargetType="{x:Type Paragraph}">
+                <Setter Property="Margin" Value="0"/>
+            </Style>
+        </RichTextBox.Resources>
+    </RichTextBox>
+</Window>
+"""
+
 
 FontWeight = {
     "Thin": System.Windows.FontWeights.Thin,
@@ -272,13 +284,28 @@ def ColorDialog(alpha=255):
         return None
 
 
+def ResourcePath(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller """
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+
+    return os.path.join(base_path, relative_path)
+
+
 class OverlayWindow(Window):
     def __init__(self):
         self.window = XamlReader.Load(XmlReader.Create(StringReader(OverlayXaml)))
+        self.console = Console()
+
         self.InitializeComponent()
         self.Loading()
-        
+
         self.settings = SettingsWindow(self)
+
+        self.console.Show()
 
         threading.Thread(target=self.PingUpdater).start()
         threading.Thread(target=self.CheckUpdate).start()
@@ -287,18 +314,20 @@ class OverlayWindow(Window):
     def InitializeComponent(self):
         self.server = "eu"
 
+        self.window.Left = 0
+        self.window.Top = 0
+
         self.window.MouseLeftButtonDown += self.MoveOverlay
         self.window.MouseRightButtonUp += self.OverlayRightClick
 
         self.grid = LogicalTreeHelper.FindLogicalNode(self.window, "Grid")
         self.label = XamlReader.Load(XmlReader.Create(StringReader(OverlayLabelXaml)))
         self.check_label = XamlReader.Load(XmlReader.Create(StringReader(OverlayLabelXaml)))
+
+        self.check_label.VerticalAlignment = 0
+        self.check_label.HorizontalAlignment = 0
         
         self.grid.Children.Add(self.label)
-
-        #self.label.VerticalAlignment = 0
-        #self.label.HorizontalAlignment = 0
-
         self.check_label.Background = BrushFromHex("#00000000")
         self.check_label.Foreground = BrushFromHex("#00000000")
         self.check_label.Content = "9999ms"
@@ -310,11 +339,38 @@ class OverlayWindow(Window):
         settings_item = System.Windows.Forms.ToolStripMenuItem("Settings")
         settings_item.Click += self.OpenSettings
 
+        console_item = System.Windows.Forms.ToolStripMenuItem("Console")
+        console_item.Click += self.OpenConsole
+
         close_item = System.Windows.Forms.ToolStripMenuItem("Close")
         close_item.Click += self.CloseOverlay
 
         self.menu.Items.Add(settings_item)
+        self.menu.Items.Add(console_item)
         self.menu.Items.Add(close_item)
+
+        # Icon menu
+        menu = System.Windows.Forms.ContextMenu()
+
+        settings_item_icon = System.Windows.Forms.MenuItem("Settings")
+        settings_item_icon.Click += self.OpenSettings
+
+        console_item_icon = System.Windows.Forms.MenuItem("Console")
+        console_item_icon.Click += self.OpenConsole
+
+        close_item_icon = System.Windows.Forms.MenuItem("Close")
+        close_item_icon.Click += self.CloseOverlay
+
+        menu.MenuItems.Add(settings_item_icon)
+        menu.MenuItems.Add(console_item_icon)
+        menu.MenuItems.Add(close_item_icon)
+
+        notify_icon = System.Windows.Forms.NotifyIcon()
+        notify_icon.Text = "Brawlhalla Display Ping"
+        notify_icon.Icon = System.Drawing.Icon(ResourcePath("icon.ico"))
+        notify_icon.ContextMenu = menu
+        notify_icon.Click += self.ClickTrayIcon
+        notify_icon.Visible = True
 
     def Loading(self):
         self.SetServer(CONFIG.server)
@@ -360,14 +416,22 @@ class OverlayWindow(Window):
 
             if result_ping >= 0:
                 avg_ping = (result_ping + avg_ping) / 2
-                print(f"Ping: {result_ping}ms \t|\tAvg ping: {math.trunc(avg_ping)}ms")
+                console_text = f"Ping: {result_ping}ms \t|\tAvg ping: {math.trunc(avg_ping)}ms"
             else:
-                print("Lost package")
+                console_text = "Lost package"
 
-
+            self.window.Dispatcher.Invoke(System.Action(lambda: self.console.AddLine(console_text)))
             self.window.Dispatcher.Invoke(System.Action(lambda: self.SetText(f"{result_ping}ms")))
 
             time.sleep(1)
+
+    # Tray icon
+    def ClickTrayIcon(self, sender, e):
+        if e.Button == System.Windows.Forms.MouseButtons.Left:
+            if self.window.Visibility == 0:
+                self.window.Show()
+
+            self.OpenConsole()
 
     # Set
     def SetText(self, text):
@@ -408,9 +472,10 @@ class OverlayWindow(Window):
 
     def SetTextColor(self, color):
         self.label.Foreground = color
+        CONFIG.text_color = str(color)
 
     def SetServer(self, server):
-        print("Server:", server)
+        self.window.Dispatcher.Invoke(System.Action(lambda: self.console.AddLine(f"Server: {server}")))
         self.server = server
         CONFIG.server = server
 
@@ -430,15 +495,15 @@ class OverlayWindow(Window):
     def GetTextColor(self):
         return self.label.Foreground
 
-
-    def CloseOverlay(self, *args):
-        self.settings.Close()
-        self.window.Close()
+    # Console
+    def OpenConsole(self, *args):
+        self.console.Show()
 
     # Settings
     def OpenSettings(self, *args):
         self.settings.Show()
 
+    # Utils
     def CheckUpdate(self):
         update_url = CheckUpdate()
 
@@ -452,6 +517,17 @@ class OverlayWindow(Window):
             
             if msg == System.Windows.MessageBoxResult.Yes:
                 System.Diagnostics.Process.Start(update_url)
+
+    def Hide(self):
+        self.window.Dispatcher.Invoke(System.Windows.Threading.DispatcherPriority.Render, System.Action(self.window.Hide))
+
+    def Show(self):
+        self.window.Dispatcher.Invoke(System.Windows.Threading.DispatcherPriority.Render, System.Action(self.window.Show))
+
+    def CloseOverlay(self, *args):
+        self.settings.Close()
+        self.console.Close()
+        self.window.Close()
 
 
 class SettingsWindow(Window):
@@ -602,6 +678,37 @@ class SettingsWindow(Window):
             self.overlay.SetServer(self.servers.SelectedItem)
 
     # Utils
+    def Show(self):
+        self.window.Show()
+
+    def FormClosing(self, sender, e):
+        e.Cancel = True
+        self.window.Hide()
+
+    def Close(self):
+        self.window.Close()
+
+
+class Console(Window):
+    def __init__(self):
+        self.window = XamlReader.Load(XmlReader.Create(StringReader(ConsoleXaml)))
+        self.InitializeComponent()
+
+    def InitializeComponent(self):
+        self.window.Closing += self.FormClosing
+
+        self.console = LogicalTreeHelper.FindLogicalNode(self.window, "Console")
+        self.console.Document = System.Windows.Documents.FlowDocument()
+
+        self.console.TextChanged += self.LineAdded
+
+    def LineAdded(self, sender, e):
+        self.console.ScrollToEnd()
+
+    def AddLine(self, text):
+        if self.window.Visibility == 0 and self.window.WindowState == 0:
+            self.console.Document.Blocks.Add(System.Windows.Documents.Paragraph(System.Windows.Documents.Run(text)))
+
     def Show(self):
         self.window.Show()
 
