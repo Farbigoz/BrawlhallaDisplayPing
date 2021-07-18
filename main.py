@@ -5,6 +5,7 @@ import math
 import threading
 
 from package.ping3 import ping
+from package.resources import ResourcePath
 from package.checkupdate import CheckUpdate
 from package.config import ConfigFile, ConfigElement
 
@@ -22,6 +23,8 @@ from System.Windows.Markup import XamlReader, XamlWriter
 from System.Threading import Thread, ThreadStart, ApartmentState
 from System.Windows import Application, Window, LogicalTreeHelper
 
+
+System.Reflection.Assembly.LoadFile(ResourcePath('package\Xceed.Wpf.Toolkit.dll'))
 
 SERVERS = {
     "us-e": "pingtest-atl.brawlhalla.com",
@@ -45,11 +48,12 @@ if LOCAL_DATA_FOLDER not in os.listdir(os.getenv("APPDATA")):
 class ConfigMap(ConfigFile):
     text_color = ConfigElement(default="#000000")
     background_color = ConfigElement(default="#eeeeee")
-    background_transparent = ConfigElement(default=False)
     font_name = ConfigElement(default="System")
     font_size = ConfigElement(default="12")
     server = ConfigElement(default="eu")
     font_weight = ConfigElement(default="Bold")
+    posx = ConfigElement(default=0)
+    posy = ConfigElement(default=0)
 
 
 CONFIG = ConfigMap(os.path.join(LOCAL_DATA_PATH, "settings.cfg"))
@@ -94,6 +98,7 @@ SettingsXaml = """
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:wpfTool="clr-namespace:Xceed.Wpf.Toolkit;assembly=Xceed.Wpf.Toolkit"
         Title="Settings" Height="500" Width="300">
     <Grid>
         <Grid.RowDefinitions>
@@ -110,6 +115,7 @@ SettingsXaml = """
             <RowDefinition Height="2"></RowDefinition>
             <RowDefinition Height="25"></RowDefinition>
             <RowDefinition Height="2"></RowDefinition>
+            
         </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="120"></ColumnDefinition>
@@ -134,32 +140,17 @@ SettingsXaml = """
             VerticalContentAlignment="Center"
             Grid.Column="0" Grid.Row="3"/>
 
-        <Grid
+        <wpfTool:ButtonSpinner
+            Name="FontSizeSpinner"
             Grid.Column="1" Grid.Row="3">
-            <Grid.RowDefinitions>
-                <RowDefinition></RowDefinition>
-                <RowDefinition></RowDefinition>
-            </Grid.RowDefinitions>
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition></ColumnDefinition>
-                <ColumnDefinition Width="15"></ColumnDefinition>
-            </Grid.ColumnDefinitions>
-            
-            <TextBox
+            <TextBox 
                 Name="FontSize"
                 VerticalContentAlignment="Center"
-                Grid.Column="0" Grid.Row="0" Grid.RowSpan="2"/>
-
-            <Button 
-                Name="FontSizeUp"
-                Grid.Column="1" Grid.Row="0"/>
-            <Button
-                Name="FontSizeDown"
-                Grid.Column="1" Grid.Row="1"/>
-        </Grid>
+            />
+        </wpfTool:ButtonSpinner>
 
         <Label 
-            Content="Font style:"
+            Content="Font weight:"
             VerticalAlignment="Center"
             VerticalContentAlignment="Center"
             Grid.Column="0" Grid.Row="5"/>
@@ -175,9 +166,9 @@ SettingsXaml = """
             VerticalContentAlignment="Center"
             Grid.Column="0" Grid.Row="7"/>
         
-        <Button 
+        <wpfTool:ColorPicker 
             Name="TextColor"
-            Background="White"
+            ShowAvailableColors="False"
             Grid.Column="1" Grid.Row="7"/>
         
         <Label 
@@ -186,34 +177,10 @@ SettingsXaml = """
             VerticalContentAlignment="Center"
             Grid.Column="0" Grid.Row="9"/>
 
-        <Grid
-            Grid.Column="1" Grid.Row="9">
-            <Grid.RowDefinitions>
-                <RowDefinition></RowDefinition>
-            </Grid.RowDefinitions>
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition></ColumnDefinition>
-                <ColumnDefinition Width="75"></ColumnDefinition>
-                <ColumnDefinition Width="20"></ColumnDefinition>
-            </Grid.ColumnDefinitions>
-
-            <Button 
-                Name="BackgroundColor"
-                Background="Black"
-                Grid.Column="0"/>
-
-            <Label 
-                Content="Transparent:"
-                VerticalAlignment="Center"
-                VerticalContentAlignment="Center"
-                Grid.Column="1"/>
-
-            <CheckBox 
-                Name="BackgroundTranparent"
-                VerticalContentAlignment="Center"
-                Grid.Column="2" Margin="0,1,0,-1"/>
-
-        </Grid>
+        <wpfTool:ColorPicker 
+            Name="BgColor"
+            ShowAvailableColors="False"
+            Grid.Column="1" Grid.Row="9"/>
 
         <Label 
             Content="Server:"
@@ -227,7 +194,6 @@ SettingsXaml = """
         </ComboBox>
 
     </Grid>
-
 </Window>
 """
 
@@ -287,17 +253,6 @@ def ColorDialog(alpha=255):
         return None
 
 
-def ResourcePath(relative_path):
-    """ Get absolute path to resource, works for dev and for PyInstaller """
-    try:
-        # PyInstaller creates a temp folder and stores path in _MEIPASS
-        base_path = sys._MEIPASS
-    except Exception:
-        base_path = os.path.abspath(".")
-
-    return os.path.join(base_path, relative_path)
-
-
 class Main(Window):
     def __init__(self):
         self.window = OverlayWindow()
@@ -318,7 +273,7 @@ class OverlayWindow:
         self.console = Console()
 
         self.InitializeComponent()
-        self.Loading()
+        self.LoadConfig()
 
         self.settings = SettingsWindow(self)
 
@@ -327,10 +282,8 @@ class OverlayWindow:
     def InitializeComponent(self):
         self.server = "eu"
 
-        self.window.Left = 0
-        self.window.Top = 0
-
         self.window.MouseLeftButtonDown += self.MoveOverlay
+        self.window.MouseLeftButtonUp += self.SaveOverlayPos
         self.window.MouseRightButtonUp += self.OverlayRightClick
 
         grid = LogicalTreeHelper.FindLogicalNode(self.window, "Grid")
@@ -347,7 +300,7 @@ class OverlayWindow:
         grid.Children.Add(self.label)
         grid.Children.Add(self.check_label)
         
-        # make menu
+        # Overlay menu
         self.menu = System.Windows.Forms.ContextMenuStrip()
 
         settings_item = System.Windows.Forms.ToolStripMenuItem("Settings")
@@ -356,11 +309,15 @@ class OverlayWindow:
         console_item = System.Windows.Forms.ToolStripMenuItem("Console")
         console_item.Click += self.OpenConsole
 
+        respos_item = System.Windows.Forms.ToolStripMenuItem("Reset position")
+        respos_item.Click += self.ResetPos
+
         close_item = System.Windows.Forms.ToolStripMenuItem("Close")
         close_item.Click += self.CloseOverlay
 
         self.menu.Items.Add(settings_item)
         self.menu.Items.Add(console_item)
+        self.menu.Items.Add(respos_item)
         self.menu.Items.Add(close_item)
 
         # Icon menu
@@ -372,11 +329,15 @@ class OverlayWindow:
         console_item_icon = System.Windows.Forms.MenuItem("Console")
         console_item_icon.Click += self.OpenConsole
 
+        respos_item_icon = System.Windows.Forms.MenuItem("Reset position")
+        respos_item_icon.Click += self.ResetPos
+
         close_item_icon = System.Windows.Forms.MenuItem("Close")
         close_item_icon.Click += self.CloseOverlay
 
         menu_icon.MenuItems.Add(settings_item_icon)
         menu_icon.MenuItems.Add(console_item_icon)
+        menu_icon.MenuItems.Add(respos_item_icon)
         menu_icon.MenuItems.Add(close_item_icon)
 
         notify_icon = System.Windows.Forms.NotifyIcon()
@@ -386,22 +347,14 @@ class OverlayWindow:
         notify_icon.Click += self.ClickTrayIcon
         notify_icon.Visible = True
 
-    def Loading(self):
+    def LoadConfig(self):
+        self.SetPos(CONFIG.posx, CONFIG.posy)
         self.SetServer(CONFIG.server)
         self.SetFont(CONFIG.font_name)
         self.SetFontSize(int(CONFIG.font_size))
         self.SetFontWeight(CONFIG.font_weight)
         self.SetTextColor(BrushFromHex(CONFIG.text_color))
-
-        bg_color = CONFIG.background_color
-
-        if CONFIG.background_transparent:
-            if len(bg_color) == 7:
-                bg_color = f"#00{bg_color[1:]}"
-            else:
-                bg_color = f"#00{bg_color[3:]}"
-
-        self.SetBackgroundColor(BrushFromHex(bg_color))
+        self.SetBackgroundColor(BrushFromHex(CONFIG.background_color))
 
     def Run(self):
         self.console.Show()
@@ -422,13 +375,25 @@ class OverlayWindow:
         pos = System.Windows.Forms.Control.MousePosition
         self.menu.Show(pos)
 
+    def SaveOverlayPos(self, sender, e):
+        CONFIG.posx, CONFIG.posy = self.GetPos()
+
+    def ResetPos(self, sender, e):
+        self.SetPos(0, 0)
+
+        CONFIG.posx = 0
+        CONFIG.posy = 0
+
     # Process
     def PingUpdater(self, *args):
         avg_ping = 0
         
         while True:
 
-            result_ping = ping(SERVERS.get(self.server, "eu"), timeout=1, unit="ms")
+            result_ping = ping(SERVERS.get(self.server, "eu"), timeout=1, unit="ms", size=1)
+
+            if avg_ping == 0:
+                avg_ping = result_ping
 
             if result_ping is None:
                 result_ping = -1
@@ -489,7 +454,6 @@ class OverlayWindow:
     def SetBackgroundColor(self, color):
         self.label.Background = color
         CONFIG.background_color = str(color)
-        CONFIG.background_transparent = str(color).startswith("#00")
 
     def SetTextColor(self, color):
         self.label.Foreground = color
@@ -499,6 +463,10 @@ class OverlayWindow:
         self.window.Dispatcher.Invoke(System.Action(lambda: self.console.AddLine(f"Server: {server}")))
         self.server = server
         CONFIG.server = server
+
+    def SetPos(self, x, y):
+        self.window.Left = x
+        self.window.Top =  y
 
     # Get
     def GetFont(self):
@@ -515,6 +483,9 @@ class OverlayWindow:
 
     def GetTextColor(self):
         return self.label.Foreground
+
+    def GetPos(self):
+        return int(self.window.Left), int(self.window.Top)
 
     # Console
     def OpenConsole(self, *args):
@@ -555,7 +526,7 @@ class SettingsWindow:
     __slots__ = (
         "window", "overlay",
         "num_regex",
-        "fonts_list", "fonts_size", "font_size_up", "font_size_down", "font_weight",
+        "fonts_list", "fonts_size", "font_size_spinner", "font_weight",
         "text_color", "bg_color", "bg_tranparent", "servers"
     )
 
@@ -564,7 +535,7 @@ class SettingsWindow:
 
         self.window = XamlReader.Load(XmlReader.Create(StringReader(SettingsXaml)))
         self.InitializeComponent()
-        self.Loading()
+        self.LoadConfig()
 
     def InitializeComponent(self):
         self.window.Closing += self.FormClosing
@@ -574,35 +545,31 @@ class SettingsWindow:
         self.fonts_list = LogicalTreeHelper.FindLogicalNode(self.window, "FontsList")
         self.fonts_list.SelectionChanged += self.FontSelected
 
-        self.fonts_size = LogicalTreeHelper.FindLogicalNode(self.window, "FontSize")
+        self.font_size_spinner = LogicalTreeHelper.FindLogicalNode(self.window, "FontSizeSpinner")
+        self.font_size_spinner.Spin += self.SpinFontSize
+
+        self.fonts_size = self.font_size_spinner.Content
         self.fonts_size.PreviewKeyDown += self.KeyDownFontSize
         self.fonts_size.KeyDown += self.KeyDownFontSize
         System.Windows.DataObject.AddPastingHandler(
             self.fonts_size, System.Windows.DataObjectPastingEventHandler(self.PasteFontSize)
         )
 
-        self.font_size_up = LogicalTreeHelper.FindLogicalNode(self.window, "FontSizeUp")
-        self.font_size_up.Click += lambda sender, e: self.FontSizeUp()
-
-        self.font_size_down = LogicalTreeHelper.FindLogicalNode(self.window, "FontSizeDown")
-        self.font_size_down.Click += lambda sender, e: self.FontSizeDown()
-
         self.font_weight = LogicalTreeHelper.FindLogicalNode(self.window, "FontWeight")
         self.font_weight.SelectionChanged += self.FontWeightelected
 
         self.text_color = LogicalTreeHelper.FindLogicalNode(self.window, "TextColor")
-        self.text_color.Click += self.SetTextColor
+        self.text_color.SelectedColorChanged += self.SetTextColor
+        self.text_color.Opened += self.OpenTextColor
 
-        self.bg_color = LogicalTreeHelper.FindLogicalNode(self.window, "BackgroundColor")
-        self.bg_color.Click += self.SetBackgroundColor
-
-        self.bg_tranparent = LogicalTreeHelper.FindLogicalNode(self.window, "BackgroundTranparent")
-        self.bg_tranparent.Click += self.SetBackgroundTransparent
+        self.bg_color = LogicalTreeHelper.FindLogicalNode(self.window, "BgColor")
+        self.bg_color.SelectedColorChanged += self.SetBackgroundColor
+        self.bg_color.Opened += self.OpenBackgroundColor
 
         self.servers = LogicalTreeHelper.FindLogicalNode(self.window, "Servers")
         self.servers.SelectionChanged += self.ServerSelected
 
-    def Loading(self):
+    def LoadConfig(self):
         for font in sorted([f.Source for f in System.Windows.Media.Fonts.SystemFontFamilies]):
             font_item = System.Windows.Controls.ListBoxItem()
             font_item.Content = font
@@ -619,9 +586,12 @@ class SettingsWindow:
             if self.overlay.GetFontWeight() == weight_cls:
                 self.font_weight.SelectedIndex = index
 
-        self.text_color.Background = self.overlay.GetTextColor()
-        self.bg_color.Background = BrushFromHex("#FF" + str(self.overlay.GetBackgroundColor())[3:])
-        self.bg_tranparent.IsChecked = str(self.overlay.GetBackgroundColor()).startswith("#00")
+        self.text_color.SelectedColor = System.Windows.Media.ColorConverter.ConvertFromString(
+                                                            str(self.overlay.GetTextColor())
+                                                        )
+        self.bg_color.SelectedColor = System.Windows.Media.ColorConverter.ConvertFromString(
+                                                            str(self.overlay.GetBackgroundColor())
+                                                        )
 
         for server in SERVERS.keys():
             index = self.servers.Items.Add(server)
@@ -638,37 +608,18 @@ class SettingsWindow:
         e.CancelCommand()
 
     def KeyDownFontSize(self, sender, e):
-        if e.Key == 24:
-            self.FontSizeUp()
-
-        elif e.Key == 26:
-            self.FontSizeDown()
-        
         e.Handled = True
 
-    def FontSizeUp(self):
-        if self.fonts_size.Text.strip() == "":
-            self.fonts_size.Text = f"{MinFontSize}"
+    def SpinFontSize(self, sender, e):
+        font_size = int(self.fonts_size.Text)
 
-        text_size = int(self.fonts_size.Text)
-        if text_size < MaxFontSize:
-            self.fonts_size.Text = str(text_size+1)
-            self.CommitFontSize()
+        if e.Direction == 0 and font_size < MaxFontSize:
+            font_size += 1
+        elif e.Direction == 1 and font_size > MinFontSize:
+            font_size -= 1
 
-    def FontSizeDown(self):
-        if self.fonts_size.Text.strip() == "":
-            self.fonts_size.Text = f"{MinFontSize}"
-
-        text_size = int(self.fonts_size.Text)
-        if text_size > MinFontSize:
-            self.fonts_size.Text = str(text_size-1)
-            self.CommitFontSize()
-
-    def CommitFontSize(self, size=None):
-        if size is None:
-            self.overlay.SetFontSize(int(self.fonts_size.Text))
-        else:
-            self.overlay.SetFontSize(size)
+        self.fonts_size.Text = str(font_size)
+        self.overlay.SetFontSize(font_size)
 
     # Font style
     def FontWeightelected(self, sender, e):
@@ -676,26 +627,20 @@ class SettingsWindow:
 
     # Colors
     def SetTextColor(self, sender, e):
-        color = ColorDialog()
-        if color is not None:
-            self.text_color.Background = color
-            self.overlay.SetTextColor(color)
+        self.overlay.SetTextColor(BrushFromHex(str(e.NewValue)))
+
+    def OpenTextColor(self, sender, e):
+        self.text_color.SelectedColor = System.Windows.Media.ColorConverter.ConvertFromString(
+                                                            str(self.overlay.GetTextColor())
+                                                        )
 
     def SetBackgroundColor(self, sender, e):
-        color = ColorDialog(0 if self.bg_tranparent.IsChecked else 255)
-        if color is not None:
-            self.bg_color.Background = BrushFromHex("#FF" + str(color)[3:])
-            self.overlay.SetBackgroundColor(color)
+        self.overlay.SetBackgroundColor(BrushFromHex(str(e.NewValue)))
 
-    def SetBackgroundTransparent(self, sender, e):
-        color_hex = str(self.overlay.GetBackgroundColor())
-
-        if self.bg_tranparent.IsChecked:
-            color_hex = f"#00{color_hex[3:]}"
-        else:
-            color_hex = f"#FF{color_hex[3:]}"
-
-        self.overlay.SetBackgroundColor(BrushFromHex(color_hex))
+    def OpenBackgroundColor(self, sender, e):
+        self.bg_color.SelectedColor = System.Windows.Media.ColorConverter.ConvertFromString(
+                                                            str(self.overlay.GetBackgroundColor())
+                                                        )
 
     # Server
     def ServerSelected(self, sender, e):
@@ -735,8 +680,12 @@ class Console:
         self.console.ScrollToEnd()
 
     def AddLine(self, text):
-        if self.window.Visibility == 0 and self.window.WindowState == 0:
-            self.console.Document.Blocks.Add(System.Windows.Documents.Paragraph(System.Windows.Documents.Run(text)))
+        #if self.window.Visibility == 0 and self.window.WindowState == 0:
+        self.console.Document.Blocks.Add(System.Windows.Documents.Paragraph(System.Windows.Documents.Run(text)))
+        if self.console.Document.Blocks.Count > 100:
+            self.console.Document.Blocks.Remove(
+                self.console.Document.Blocks.get_FirstBlock()
+            )
 
     def Show(self):
         self.window.Show()
